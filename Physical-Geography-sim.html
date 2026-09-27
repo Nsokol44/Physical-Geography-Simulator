@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Physical Geography sim</title>
+<style>
+  html,body{margin:0;height:100%;background:#06111c;font-family:-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  #hud{position:absolute;top:12px;left:12px;color:#eaf3fb;z-index:10;background:rgba(6,17,28,0.78);padding:12px 16px;border-radius:10px;max-width:340px}
+  #hud h1{font-size:14px;margin:0 0 6px;font-weight:600}
+  #hud p{font-size:11px;line-height:1.5;margin:3px 0;color:#b9cbd8}
+  #stats{position:absolute;top:12px;right:12px;color:#eaf3fb;z-index:10;background:rgba(6,17,28,0.78);padding:12px 16px;border-radius:10px;font-size:12px;min-width:210px}
+  #stats div{display:flex;justify-content:space-between;margin:3px 0;gap:8px}
+  #stats span:last-child{font-weight:600;text-align:right}
+  #controls{position:absolute;bottom:12px;left:12px;z-index:10;display:flex;gap:6px;flex-wrap:wrap;max-width:820px;align-items:center}
+  .btn{background:#12283d;color:#eaf3fb;border:1px solid #2b4a63;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px}
+  .btn:hover{background:#1b3853}
+  .btn.armed{background:#a34a1d;border-color:#e07a3c}
+  select.btn{appearance:none;-webkit-appearance:none;padding:7px 28px 7px 12px;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%23eaf3fb"/></svg>');background-repeat:no-repeat;background-position:right 10px center}
+  select.btn:disabled{opacity:0.5;cursor:default}
+  #intensityWrap{display:flex;align-items:center;gap:6px;background:rgba(6,17,28,0.78);padding:7px 10px;border-radius:8px;color:#eaf3fb;font-size:11px}
+  #hint{position:absolute;bottom:58px;left:12px;color:#ffd79a;font-size:12px;z-index:10;background:rgba(6,17,28,0.85);padding:6px 12px;border-radius:8px;display:none;max-width:420px}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#eaf3fb;font-size:15px;background:#06111c;z-index:20}
+  #legend{position:absolute;bottom:58px;right:12px;z-index:10;color:#eaf3fb;font-size:11px;background:rgba(6,17,28,0.78);padding:8px 12px;border-radius:8px;display:none;min-width:170px}
+  #legend div{display:flex;align-items:center;gap:6px;margin:3px 0}
+  #legend span.swatch{width:11px;height:11px;border-radius:2px;display:inline-block}
+  canvas{display:block;touch-action:none}
+  #repoFooter{position:absolute;bottom:12px;right:12px;z-index:10;color:#7d93a5;font-size:10px;background:rgba(6,17,28,0.55);padding:5px 9px;border-radius:8px}
+  #repoFooter a{color:#9fc3db;text-decoration:none}
+  #repoFooter a:hover{text-decoration:underline}
+  #onboard{position:absolute;inset:0;background:rgba(6,17,28,0.92);z-index:30;display:flex;align-items:center;justify-content:center;padding:20px}
+  #onboard .card{background:#0d1f30;border:1px solid #2b4a63;border-radius:12px;padding:22px 26px;max-width:480px;color:#eaf3fb}
+  #onboard h2{margin:0 0 10px;font-size:18px}
+  #onboard p,#onboard li{font-size:13px;line-height:1.55;color:#b9cbd8;margin:6px 0}
+  #onboard ul{padding-left:18px;margin:8px 0}
+  #onboard .btn{margin-top:14px}
+  #scenarioHint{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:12;background:rgba(20,60,40,0.9);color:#d4f0d4;padding:8px 14px;border-radius:8px;font-size:12px;max-width:520px;text-align:center;display:none;border:1px solid #3a7a5a}
+</style>
+</head>
+<body>
+<div id="loading">Fetching real elevation data (USGS/SRTM via Open-Elevation)&hellip;</div>
+<div id="onboard">
+  <div class="card">
+    <h2>Physical Geography sim</h2>
+    <p>Direct-manipulation tool for exploring hurricane track, intensity, surge, wind damage, orographic precipitation, tornadoes and lightning over real US coastal elevation transects.</p>
+    <ul>
+      <li><b>Steer</b> the yellow track; intensity responds to SST + landfall + slider. Damage is stronger in the lower-right (SE) quadrant.</li>
+      <li><b>Scenarios</b> load guided setups. <b>Hazard selector</b> + Place for lightning, tornado, wildfire, extreme rain, or fluvial flood seed.</li>
+      <li>Fluvial flooding interacts with hurricane rainfall on low ground. Drag the blue rain ring.</li>
+      <li>Overlays, Export log, and touch controls support classroom and research use.</li>
+    </ul>
+    <p style="font-size:11px;color:#8aa">All processes are pedagogically simplified proxies (see Table 1 in the accompanying method paper). Pair with instructor framing.</p>
+    <button class="btn" id="startBtn">Start exploring</button>
+  </div>
+</div>
+<div id="scenarioHint"></div>
+<div id="hud">
+  <h1>Physical Geography sim</h1>
+  <p>Drag yellow track points to steer; slider intensifies. Scenarios load guided setups. Hazard selector + Place button for lightning, tornado, wildfire, extreme rain, or fluvial seed. Hurricane damage is stronger in the lower-right quadrant. Drag blue rain ring. Export logs actions for research.</p>
+</div>
+<div id="stats">
+  <div><span>Coastline</span><span id="coastStat">South Carolina</span></div>
+  <div><span>Nearest city</span><span id="cityNameStat">Charleston, SC</span></div>
+  <div><span>Category</span><span id="cat">1</span></div>
+  <div><span>Wind (mph)</span><span id="wind">75</span></div>
+  <div><span>Storm surge (ft)</span><span id="surge">0</span></div>
+  <div><span>Peak surge (ft)</span><span id="peakSurge">0</span></div>
+  <div><span>Flooded land</span><span id="flooded">0%</span></div>
+  <div><span>Wind-damaged land</span><span id="winddmgStat">0%</span></div>
+  <div><span>Hurricane status</span><span id="status">Over water</span></div>
+  <div><span>Tornado</span><span id="tornadoStat">None</span></div>
+  <div><span>Lightning strikes</span><span id="lightningStat">0</span></div>
+  <div><span>Town damage</span><span id="cityStat">0/0</span></div>
+  <div><span>Terrain data</span><span id="demStatus">Loading&hellip;</span></div>
+  <div><span>Events logged</span><span id="logCount">0</span></div>
+</div>
+<div id="hint"></div>
+<div id="legend"></div>
+<div id="controls">
+  <select class="btn" id="scenarioSelect" title="Load a guided or free-play scenario">
+    <option value="free">Scenario: Free exploration</option>
+    <option value="hugo">Scenario: Hugo-like landfall (SC)</option>
+    <option value="offshore">Scenario: Stay offshore (minimize damage)</option>
+    <option value="orographic">Scenario: Orographic focus (inland rain)</option>
+    <option value="gulf_surge">Scenario: Gulf low-relief surge</option>
+  </select>
+  <select class="btn" id="coastlineSelect" title="Choose which real US coastline the terrain transect is sampled from">
+    <option value="sc">Coastline: South Carolina</option>
+    <option value="nc">Coastline: North Carolina</option>
+    <option value="fl">Coastline: Florida</option>
+    <option value="gulf">Coastline: Gulf Coast (Louisiana)</option>
+  </select>
+  <select class="btn" id="overlaySelect" title="Choose which effect layer to display on the terrain">
+    <option value="none">Overlay: None</option>
+    <option value="circulation">Overlay: Wind belts (circulation)</option>
+    <option value="precip">Overlay: Precipitation accumulation</option>
+    <option value="winddmg">Overlay: Hurricane wind damage</option>
+  </select>
+  <select class="btn" id="hazardSelect" title="Select secondary hazard placement mode">
+    <option value="lightning">Hazard: Lightning</option>
+    <option value="tornado">Hazard: Tornado</option>
+    <option value="wildfire">Hazard: Wildfire</option>
+    <option value="extreme_rain">Hazard: Extreme rain burst</option>
+    <option value="fluvial">Hazard: Fluvial flood seed</option>
+  </select>
+  <button class="btn" id="reset">Reset</button>
+  <button class="btn" id="placeHazard">Place selected hazard</button>
+  <button class="btn" id="exportLog">Export log</button>
+  <button class="btn" id="helpBtn">Help</button>
+  <div id="intensityWrap">
+    <span>Intensify</span>
+    <input type="range" id="intensitySlider" min="0" max="100" value="0" step="1"/>
+    <span id="intensityOut">0</span>
+  </div>
+</div>
+<div id="repoFooter">Source, changelog &amp; feedback: <a href="https://github.com/Nsokol44/hurricane-sim" target="_blank" rel="noopener">GitHub repository</a> · Enhanced prototype for method paper evaluation</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06111c);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// ---------- Research logging ----------
+const eventLog = [];
+function logEvent(type, detail={}){
+  eventLog.push({t: Date.now(), type, ...detail});
+  const el = document.getElementById('logCount');
+  if (el) el.textContent = eventLog.length;
+}
+function exportLog(){
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    coastline: currentCoastKey,
+    scenario: document.getElementById('scenarioSelect').value,
+    finalStats: {
+      category: document.getElementById('cat').textContent,
+      windMph: document.getElementById('wind').textContent,
+      peakSurge: document.getElementById('peakSurge').textContent,
+      flooded: document.getElementById('flooded').textContent,
+      windDamaged: document.getElementById('winddmgStat').textContent,
+      cityDamage: document.getElementById('cityStat').textContent,
+      lightning: document.getElementById('lightningStat').textContent,
+      tornado: document.getElementById('tornadoStat').textContent
+    },
+    events: eventLog
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `hurricane-sim-log-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  logEvent('export');
+}
+
+// ---------- Coastline transects ----------
+const COASTLINES = {
+  sc:   { label:'South Carolina', coast:{lat:32.75,  lon:-79.85}, inland:{lat:34.85,  lon:-82.45}, note:'Charleston/Isle of Palms → SC Piedmont',
+          reliefScale:70, rippleScale:1.0, dryFrac:0.55, bay:{depth:70,  freq:1.0, phase:0.0},
+          city:{name:'Charleston, SC', buildings:16, minH:10, maxH:26, spread:80} },
+  nc:   { label:'North Carolina', coast:{lat:34.2104,lon:-77.7998},inland:{lat:35.2271,lon:-80.8431},note:'Wrightsville Beach → NC Piedmont near Charlotte',
+          reliefScale:58, rippleScale:0.8, dryFrac:0.6,  bay:{depth:130, freq:1.4, phase:1.1},
+          city:{name:'Wilmington, NC', buildings:10, minH:8,  maxH:18, spread:65} },
+  fl:   { label:'Florida',        coast:{lat:28.3922,lon:-80.6077},inland:{lat:27.9006,lon:-81.5931},note:'Cocoa Beach → Lake Wales Ridge (low relief)',
+          reliefScale:14, rippleScale:0.25,dryFrac:0.85, bay:{depth:35,  freq:2.2, phase:2.4},
+          city:{name:'Miami, FL', buildings:26, minH:16, maxH:42, spread:95} },
+  gulf: { label:'Gulf Coast',     coast:{lat:29.2352,lon:-89.9873},inland:{lat:30.4515,lon:-91.1871},note:'Grand Isle, LA → Baton Rouge (deltaic, very low relief)',
+          reliefScale:10, rippleScale:0.2, dryFrac:0.9,  bay:{depth:220, freq:2.8, phase:0.4},
+          city:{name:'New Orleans, LA', buildings:20, minH:12, maxH:34, spread:90} }
+};
+let currentCoastKey = 'sc';
+
+// ---------- Guided / historical-inspired scenarios ----------
+const SCENARIOS = {
+  free: {
+    label: 'Free exploration',
+    hint: '',
+    coast: null,
+    track: null,
+    intensity: 0,
+    rain: null
+  },
+  hugo: {
+    label: 'Hugo-like landfall (SC)',
+    hint: 'Observe: major hurricane approaches Charleston-area coast. Note rapid surge rise, wind-damage swath, and town impact. Then weaken inland. Compare peak vs current surge.',
+    coast: 'sc',
+    track: [{x:320,z:180},{x:180,z:90},{x:20,z:40},{x:-80,z:10}],
+    intensity: 55,
+    rain: {x:-90, z:50}
+  },
+  offshore: {
+    label: 'Stay offshore (minimize damage)',
+    hint: 'Challenge: keep the track over water as long as possible. How low can you keep flooded-land % and town damage while still having a strong storm?',
+    coast: 'sc',
+    track: [{x:350,z:220},{x:280,z:160},{x:200,z:80},{x:120,z:-40}],
+    intensity: 40,
+    rain: {x:50, z:100}
+  },
+  orographic: {
+    label: 'Orographic focus (inland rain)',
+    hint: 'Drag the blue rain ring onto the windward (near-coast) slope vs far inland. Switch to Precipitation overlay. Notice amplification near the rising terrain and drier rain-shadow coloring farther inland.',
+    coast: 'nc',
+    track: [{x:280,z:150},{x:100,z:60},{x:-40,z:0},{x:-160,z:-50}],
+    intensity: 25,
+    rain: {x:-100, z:40}
+  },
+  gulf_surge: {
+    label: 'Gulf low-relief surge',
+    hint: 'Low-relief deltaic coast. Even moderate winds can inundate large areas. Watch flooded-land % grow quickly. Compare with a high-relief Piedmont coast.',
+    coast: 'gulf',
+    track: [{x:300,z:160},{x:160,z:80},{x:20,z:30},{x:-100,z:-20}],
+    intensity: 45,
+    rain: {x:-60, z:60}
+  }
+};
+
+// ---------- Colors (chosen for reasonable separation; not fully CVD-optimized) ----------
+const warmSST = new THREE.Color(0x1d6fa8), coolSST = new THREE.Color(0x0a2c47);
+const sandColor = new THREE.Color(0xd7c48a);
+const landColor = new THREE.Color(0x2a4a2f);
+const dryColor  = new THREE.Color(0x8a7a4e);
+const rockColor = new THREE.Color(0x6b6355);
+const mudColor  = new THREE.Color(0x5c4a2e);
+const floodColor= new THREE.Color(0x1b3f5c);
+const scorchColor=new THREE.Color(0x1c1c1c);
+const windTornColor = new THREE.Color(0x8a6a45);
+const precipColor = new THREE.Color(0x3fa0c9);
+const winddmgOverlayColor = new THREE.Color(0xd98a3c);
+
+function shoreOffsetAt(z){
+  const b = COASTLINES[currentCoastKey].bay;
+  return Math.sin(z*0.008*b.freq + b.phase)*b.depth*0.35
+       + Math.sin(z*0.021*b.freq + b.phase*1.7)*b.depth*0.22;
+}
+function shoreXAt(z){ return -40 + shoreOffsetAt(z); }
+
+function baseColorAt(x, z, h){
+  const params = COASTLINES[currentCoastKey];
+  const inland = THREE.MathUtils.clamp((shoreXAt(z)-x)/460, 0, 1);
+  let base;
+  if (inland < 0.12) base = sandColor;
+  else if (inland < params.dryFrac) base = landColor;
+  else base = dryColor;
+  return base.clone().lerp(rockColor, THREE.MathUtils.clamp(h/90,0,1)*0.6);
+}
+
+// ---------- Terrain: denser transect + 2D-aware procedural variation ----------
+const WORLD = 500, SEG = 80, STEP = (2*WORLD)/SEG, ROW = SEG+1; // denser mesh
+let demProfile = null, terrainGeo, terrainMesh, baseHeights;
+let floodDmg, windDmg, hurrWindDmg, precipAccum, landVertexCount = 0;
+
+// Simple value-noise for 2D relief variation (no external lib)
+function hash2(x,z){ return (Math.sin(x*127.1+z*311.7)*43758.5453)%1; }
+function valueNoise(x,z){
+  const ix=Math.floor(x), iz=Math.floor(z);
+  const fx=x-ix, fz=z-iz;
+  const a=hash2(ix,iz), b=hash2(ix+1,iz), c=hash2(ix,iz+1), d=hash2(ix+1,iz+1);
+  const ux=fx*fx*(3-2*fx), uz=fz*fz*(3-2*fz);
+  return a+(b-a)*ux + (c-a)*uz + (a-b-c+d)*ux*uz;
+}
+
+function elevAt(x, z){
+  const params = COASTLINES[currentCoastKey];
+  const shoreX = shoreXAt(z);
+  if (x > shoreX) return 0;
+  const notchX = -120 - params.bay.depth*0.35;
+  const notchZLimit = -180 + params.bay.phase*40;
+  if (x < notchX && z < notchZLimit) return 0;
+  const inland = THREE.MathUtils.clamp((shoreX - x) / 460, 0, 1);
+  const idx = inland * (demProfile.length - 1);
+  const i0 = Math.floor(idx), i1 = Math.min(demProfile.length-1, i0+1), t = idx - i0;
+  let h = demProfile[i0]*(1-t) + demProfile[i1]*t;
+  // 2D-aware ripple + low-frequency ridge variation (alongshore + cross-shore)
+  h += (Math.sin(z*0.015)*5 + Math.sin(z*0.0037+1.7)*9) * params.rippleScale;
+  h += valueNoise(x*0.012, z*0.012) * params.reliefScale * 0.18;
+  h += valueNoise(x*0.004+3.1, z*0.004) * params.reliefScale * 0.12;
+  // gentle secondary ridge inland on higher-relief coasts
+  if (params.reliefScale > 40 && inland > 0.45 && inland < 0.85){
+    h += Math.sin((inland-0.45)*Math.PI)*params.reliefScale*0.22;
+  }
+  return Math.max(0, h);
+}
+
+function buildTerrain(){
+  const positions = [], colors = [];
+  baseHeights = new Float32Array(ROW*ROW);
+  floodDmg = new Float32Array(ROW*ROW);
+  windDmg  = new Float32Array(ROW*ROW);
+  hurrWindDmg = new Float32Array(ROW*ROW);
+  precipAccum = new Float32Array(ROW*ROW);
+  landVertexCount = 0;
+  for (let iz=0; iz<ROW; iz++){
+    for (let ix=0; ix<ROW; ix++){
+      const x = -WORLD + ix*STEP, z = -WORLD + iz*STEP;
+      const h = elevAt(x,z);
+      const idx = iz*ROW+ix;
+      baseHeights[idx] = h;
+      positions.push(x,h,z);
+      let col;
+      if (h <= 0.01){
+        const t = THREE.MathUtils.clamp((z+500)/1000,0,1);
+        col = warmSST.clone().lerp(coolSST, t);
+      } else {
+        landVertexCount++;
+        col = baseColorAt(x,z,h);
+      }
+      colors.push(col.r,col.g,col.b);
+    }
+  }
+  const indices = [];
+  for (let iz=0; iz<SEG; iz++){
+    for (let ix=0; ix<SEG; ix++){
+      const a=iz*ROW+ix, b=a+1, c=a+ROW, d=c+1;
+      indices.push(a,c,b, b,c,d);
+    }
+  }
+  terrainGeo = new THREE.BufferGeometry();
+  terrainGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  terrainGeo.setIndex(indices);
+  terrainGeo.computeVertexNormals();
+  terrainMesh = new THREE.Mesh(terrainGeo, new THREE.MeshBasicMaterial({vertexColors:true}));
+  scene.add(terrainMesh);
+  buildOverlayMesh();
+}
+
+function isOverLand(x,z){ return elevAt(x,z) > 1; }
+
+// Optional quadrantBias: when true, boost damage in the lower-right (SE) quadrant relative to storm center
+// (approximate right-front / strongest-wind sector for many landfalling Atlantic storms).
+function damageAndRefresh(cx, cz, reach, dmgArr, rate, dt, quadrantBias=false){
+  const ix0=Math.max(0,Math.floor((cx-reach+WORLD)/STEP)), ix1=Math.min(SEG,Math.ceil((cx+reach+WORLD)/STEP));
+  const iz0=Math.max(0,Math.floor((cz-reach+WORLD)/STEP)), iz1=Math.min(SEG,Math.ceil((cz+reach+WORLD)/STEP));
+  const posAttr = terrainGeo.attributes.position, colAttr = terrainGeo.attributes.color;
+  let touched = false;
+  for (let iz=iz0; iz<=iz1; iz++){
+    for (let ix=ix0; ix<=ix1; ix++){
+      const idx = iz*ROW+ix;
+      const h = baseHeights[idx];
+      if (h <= 0.01) continue;
+      const x = -WORLD+ix*STEP, z = -WORLD+iz*STEP;
+      const d = Math.hypot(x-cx, z-cz);
+      if (d >= reach) continue;
+      touched = true;
+      let localRate = rate;
+      if (quadrantBias){
+        // Lower-right = positive x (east/ocean-side) and negative z (south) relative to center
+        const dx = x - cx, dz = z - cz;
+        if (dx > 0 && dz < 0) localRate *= 1.65;       // SE quadrant strongest
+        else if (dx > 0 || dz < 0) localRate *= 1.25;   // adjacent sectors moderate boost
+      }
+      dmgArr[idx] = Math.min(1, dmgArr[idx] + (1-d/reach)*localRate*dt);
+      const dmg = Math.max(floodDmg[idx], windDmg[idx], hurrWindDmg[idx]);
+      posAttr.setY(idx, h*(1-0.82*dmg));
+      let col = baseColorAt(x,z,h);
+      if (floodDmg[idx] > 0){
+        const t = floodDmg[idx];
+        col = t<0.5 ? col.clone().lerp(mudColor,t*2) : mudColor.clone().lerp(floodColor,(t-0.5)*2);
+      }
+      if (hurrWindDmg[idx] > 0) col = col.clone().lerp(windTornColor, hurrWindDmg[idx]*0.85);
+      if (windDmg[idx] > 0) col = col.clone().lerp(scorchColor, windDmg[idx]);
+      colAttr.setXYZ(idx, col.r,col.g,col.b);
+    }
+  }
+  if (touched){ posAttr.needsUpdate = true; colAttr.needsUpdate = true; }
+}
+function fractionAbove(arr, thresh){
+  let n=0;
+  for (let i=0;i<arr.length;i++) if (baseHeights[i]>0.01 && arr[i]>thresh) n++;
+  return landVertexCount ? n/landVertexCount : 0;
+}
+function resetTerrainDamage(){
+  floodDmg.fill(0); windDmg.fill(0); hurrWindDmg.fill(0); precipAccum.fill(0);
+  const posAttr=terrainGeo.attributes.position, colAttr=terrainGeo.attributes.color;
+  for (let iz=0; iz<ROW; iz++){
+    for (let ix=0; ix<ROW; ix++){
+      const idx=iz*ROW+ix, h=baseHeights[idx];
+      posAttr.setY(idx, h);
+      if (h>0.01){
+        const x=-WORLD+ix*STEP, z=-WORLD+iz*STEP;
+        const col = baseColorAt(x,z,h);
+        colAttr.setXYZ(idx,col.r,col.g,col.b);
+      }
+    }
+  }
+  posAttr.needsUpdate=true; colAttr.needsUpdate=true;
+}
+
+// ---------- Precipitation (orographic boost uses local height + inland position) ----------
+function updatePrecip(dt){
+  const reach = 130;
+  const ix0=Math.max(0,Math.floor((rainCenter.x-reach+WORLD)/STEP)), ix1=Math.min(SEG,Math.ceil((rainCenter.x+reach+WORLD)/STEP));
+  const iz0=Math.max(0,Math.floor((rainCenter.z-reach+WORLD)/STEP)), iz1=Math.min(SEG,Math.ceil((rainCenter.z+reach+WORLD)/STEP));
+  for (let i=0;i<precipAccum.length;i++) precipAccum[i] = Math.max(0, precipAccum[i] - 0.02*dt);
+  for (let iz=iz0; iz<=iz1; iz++){
+    for (let ix=ix0; ix<=ix1; ix++){
+      const idx = iz*ROW+ix;
+      const h = baseHeights[idx];
+      if (h <= 0.01) continue;
+      const x = -WORLD+ix*STEP, z = -WORLD+iz*STEP;
+      const d = Math.hypot(x-rainCenter.x, z-rainCenter.z);
+      if (d >= reach) continue;
+      const inland = THREE.MathUtils.clamp((shoreXAt(z)-x)/460, 0, 1);
+      // Stronger on windward lower-to-mid slopes; weaker in deep rain-shadow or flat low-relief
+      const heightBoost = 1 + THREE.MathUtils.clamp(h / 40, 0, 1.2);
+      const windwardBoost = inland < 0.45 ? 1.5 * heightBoost : (inland < 0.7 ? 0.8 : 0.35);
+      const intensity = 0.55 + windMph/220;
+      precipAccum[idx] = Math.min(1, precipAccum[idx] + (1-d/reach)*windwardBoost*intensity*0.15*dt);
+      // Fluvial interaction: high precip on low-elevation land contributes to flood damage (pluvial-to-fluvial proxy)
+      if (precipAccum[idx] > 0.45 && h < 12) {
+        floodDmg[idx] = Math.min(1, floodDmg[idx] + precipAccum[idx] * 0.04 * dt);
+      }
+    }
+  }
+}
+
+// ---------- Overlay mesh ----------
+let overlayMesh = null, overlayMode = 'none';
+function buildOverlayMesh(){
+  if (overlayMesh) scene.remove(overlayMesh);
+  const geo = new THREE.BufferGeometry();
+  const positions = terrainGeo.attributes.position.array.slice();
+  for (let i=0;i<positions.length;i+=3) positions[i+1] += 1.6;
+  const colors = new Float32Array(positions.length);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors,3));
+  geo.setIndex(terrainGeo.index.array.slice());
+  const mat = new THREE.MeshBasicMaterial({vertexColors:true, transparent:true, opacity:0.6, depthWrite:false});
+  overlayMesh = new THREE.Mesh(geo, mat);
+  overlayMesh.visible = false;
+  scene.add(overlayMesh);
+}
+function updateOverlayMesh(){
+  if (!overlayMesh || !overlayMesh.visible) return;
+  const arr = overlayMode === 'precip' ? precipAccum : hurrWindDmg;
+  const base = overlayMode === 'precip' ? precipColor : winddmgOverlayColor;
+  const colAttr = overlayMesh.geometry.attributes.color;
+  for (let i=0;i<baseHeights.length;i++){
+    const v = baseHeights[i]>0.01 ? arr[i] : 0;
+    colAttr.setXYZ(i, base.r*v, base.g*v, base.b*v);
+  }
+  colAttr.needsUpdate = true;
+  const overlayPos = overlayMesh.geometry.attributes.position;
+  const terrainPos = terrainGeo.attributes.position;
+  for (let i=0;i<baseHeights.length;i++) overlayPos.setY(i, terrainPos.getY(i)+1.6);
+  overlayPos.needsUpdate = true;
+}
+
+// ---------- Elevation data loading (denser profile) ----------
+async function loadDEM(coastKey){
+  currentCoastKey = coastKey || currentCoastKey;
+  const def = COASTLINES[currentCoastKey];
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('demStatus').textContent = 'Loading…';
+  document.getElementById('coastStat').textContent = def.label;
+  const coast = def.coast, inland = def.inland;
+  const N = 36; // denser transect
+  try{
+    const locations = Array.from({length:N}, (_,i)=>{
+      const t=i/(N-1);
+      return {latitude: coast.lat+t*(inland.lat-coast.lat), longitude: coast.lon+t*(inland.lon-coast.lon)};
+    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 8000);
+    const res = await fetch('https://api.open-elevation.com/api/v1/lookup', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({locations}), signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    demProfile = data.results.map(r => Math.max(0, r.elevation) * 0.14);
+    document.getElementById('demStatus').textContent = 'Live (Open-Elevation/SRTM)';
+    logEvent('dem_loaded', {source:'live', coast:currentCoastKey});
+  } catch(err){
+    const reliefScale = def.reliefScale;
+    demProfile = Array.from({length:N}, (_,i)=>{
+      const t=i/(N-1);
+      return Math.max(0, Math.pow(t,1.6)*reliefScale + Math.sin(t*6)*(reliefScale*0.09));
+    });
+    document.getElementById('demStatus').textContent = 'Procedural fallback (offline)';
+    logEvent('dem_loaded', {source:'fallback', coast:currentCoastKey});
+  }
+  const firstLoad = !terrainMesh;
+  if (terrainMesh) scene.remove(terrainMesh);
+  if (overlayMesh) { scene.remove(overlayMesh); overlayMesh = null; }
+  buildTerrain();
+  buildCity();
+  document.getElementById('loading').style.display = 'none';
+  if (firstLoad){ initSceneObjects(); animate(); }
+  else { resetTerrainDamage(); resetCity(); setOverlay(overlayMode); }
+}
+
+// ---------- Town ----------
+function cityCenterFor(){
+  const z = 70;
+  return {x: shoreXAt(z) - 45, z};
+}
+let buildings = [];
+function buildCity(){
+  if (cityGroup) scene.remove(cityGroup);
+  cityGroup = new THREE.Group();
+  buildings = [];
+  const cfg = COASTLINES[currentCoastKey].city;
+  const center = cityCenterFor();
+  document.getElementById('cityNameStat').textContent = cfg.name;
+  for (let i=0;i<cfg.buildings;i++){
+    const bx = center.x + (Math.random()-0.5)*cfg.spread;
+    const bz = center.z + (Math.random()-0.5)*cfg.spread;
+    const h = cfg.minH + Math.random()*(cfg.maxH-cfg.minH), w = 6+Math.random()*4;
+    const baseY = elevAt(bx,bz);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,w), new THREE.MeshBasicMaterial({color:0xcfd6dc}));
+    mesh.position.set(bx, baseY+h/2, bz);
+    cityGroup.add(mesh);
+    buildings.push({mesh, x:bx, z:bz, h, baseY, damaged:false});
+  }
+  scene.add(cityGroup);
+}
+let cityGroup = null;
+function resetCity(){
+  buildings.forEach(b=>{
+    b.damaged=false;
+    b.mesh.material.color.set(0xcfd6dc);
+    b.mesh.scale.y = 1;
+    b.mesh.position.y = b.baseY + b.h/2;
+  });
+  document.getElementById('cityStat').textContent = '0/'+buildings.length;
+}
+function updateCityDamage(){
+  let n=0;
+  buildings.forEach(b=>{
+    const ix = Math.max(0,Math.min(SEG,Math.round((b.x+WORLD)/STEP)));
+    const iz = Math.max(0,Math.min(SEG,Math.round((b.z+WORLD)/STEP)));
+    const idx = iz*ROW+ix;
+    const dmg = Math.max(floodDmg[idx]||0, windDmg[idx]||0, hurrWindDmg[idx]||0);
+    if (dmg > 0.2 && !b.damaged){
+      b.damaged = true;
+      b.mesh.material.color.set(0x3a3a3a);
+      b.mesh.scale.y = 0.4;
+      b.mesh.position.y = b.baseY + (b.h*0.4)/2;
+    }
+    if (b.damaged) n++;
+  });
+  document.getElementById('cityStat').textContent = n+'/'+buildings.length;
+}
+
+// ---------- Lightning ----------
+let lightningBolts = [], lightningCount = 0;
+function strikeLightning(x,z){
+  const points = [], top = 220, segs = 8;
+  for (let i=0;i<=segs;i++){
+    const t=i/segs, y = top*(1-t);
+    const jx = (i>0&&i<segs)?(Math.random()-0.5)*18:0;
+    const jz = (i>0&&i<segs)?(Math.random()-0.5)*18:0;
+    points.push(new THREE.Vector3(x+jx,y,z+jz));
+  }
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({color:0xfff6c9, transparent:true, opacity:1});
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+  lightningBolts.push({line, mat, age:0});
+  damageAndRefresh(x,z,12,windDmg,1.0,1);
+  lightningCount++;
+  document.getElementById('lightningStat').textContent = lightningCount;
+  logEvent('lightning', {x:Math.round(x), z:Math.round(z)});
+}
+function updateLightning(dt){
+  for (let i=lightningBolts.length-1;i>=0;i--){
+    const b = lightningBolts[i];
+    b.age += dt;
+    b.mat.opacity = Math.max(0, 1 - b.age/0.4);
+    if (b.age > 0.4){ scene.remove(b.line); lightningBolts.splice(i,1); }
+  }
+}
+
+// ---------- Scene objects ----------
+let stormGroup, bands, eye, track, trackLine, trackMat, tornado, windBeltsGroup;
+let progress = 0, windMph = 75, manualBoost = 0, peakSurge = 0;
+let rainCenter = {x:-130, z:80};
+let rainDrops = [], rainMarker;
+let placeMode = null;
+
+function drawTrack(){
+  if (trackLine) scene.remove(trackLine);
+  const pts = track.map(p=>new THREE.Vector3(p.x,2,p.z));
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  trackLine = new THREE.Line(geo, trackMat);
+  scene.add(trackLine);
+}
+function makeTornadoMesh(){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(3,20,65,12,1,true),
+    new THREE.MeshBasicMaterial({color:0x585d54, transparent:true, opacity:0.6, side:THREE.DoubleSide})
+  );
+  body.position.y = 32;
+  g.add(body);
+  return g;
+}
+function efScale(mph){
+  if (mph<86) return 0; if (mph<111) return 1; if (mph<136) return 2;
+  if (mph<166) return 3; if (mph<201) return 4; return 5;
+}
+function placeTornadoAt(x,z){
+  if (tornado) scene.remove(tornado.group);
+  const group = makeTornadoMesh();
+  group.position.set(x,0,z);
+  scene.add(group);
+  tornado = { group, x, z, mph: 65+Math.random()*160, age:0, manual:true };
+  logEvent('tornado_place', {x:Math.round(x), z:Math.round(z), mph:Math.round(tornado.mph)});
+}
+
+// ---------- Overlays ----------
+const LEGENDS = {
+  circulation: null,
+  precip: [{c:'#3fa0c9', l:'Accumulated precipitation (higher opacity = wetter)'}],
+  winddmg: [{c:'#d98a3c', l:'Cumulative hurricane wind-damage magnitude'}]
+};
+function buildWindBelts(){
+  windBeltsGroup = new THREE.Group();
+  const bands2 = [
+    {zMin:-500, zMax:-166, dir:-1, color:0xffcf6b},
+    {zMin:-166, zMax:166,  dir: 1, color:0x9fd6ff},
+    {zMin:166,  zMax:500,  dir:-1, color:0xc9c9ff}
+  ];
+  bands2.forEach(b=>{
+    for (let x=-460;x<460;x+=90){
+      for (let z=b.zMin+40;z<b.zMax;z+=90){
+        windBeltsGroup.add(new THREE.ArrowHelper(new THREE.Vector3(b.dir,0,0), new THREE.Vector3(x,10,z), 50, b.color, 14, 8));
+      }
+    }
+  });
+  scene.add(windBeltsGroup);
+}
+function setOverlay(mode){
+  overlayMode = mode;
+  if (windBeltsGroup){ scene.remove(windBeltsGroup); windBeltsGroup = null; }
+  if (overlayMesh) overlayMesh.visible = false;
+  const legendEl = document.getElementById('legend');
+  if (mode === 'circulation'){
+    buildWindBelts();
+    legendEl.style.display = 'none';
+  } else if (mode === 'precip' || mode === 'winddmg'){
+    if (!overlayMesh) buildOverlayMesh();
+    overlayMesh.visible = true;
+    const items = LEGENDS[mode];
+    legendEl.innerHTML = items.map(it=>`<div><span class="swatch" style="background:${it.c}"></span>${it.l}</div>`).join('');
+    legendEl.style.display = 'block';
+  } else {
+    legendEl.style.display = 'none';
+  }
+  logEvent('overlay', {mode});
+}
+
+const camTarget = new THREE.Vector3(0,0,60);
+const camSpherical = new THREE.Spherical();
+camSpherical.setFromVector3(new THREE.Vector3(0,260,320).sub(camTarget));
+function applyCam(){
+  const offset = new THREE.Vector3().setFromSpherical(camSpherical);
+  camera.position.copy(camTarget).add(offset);
+  camera.lookAt(camTarget);
+}
+applyCam();
+
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+function toWorldFromNDC(nx, ny){
+  mouseNDC.x = nx; mouseNDC.y = ny;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hit = raycaster.intersectObject(terrainMesh)[0];
+  return hit ? hit.point : null;
+}
+function toWorld(evt){
+  return toWorldFromNDC((evt.clientX/innerWidth)*2-1, -(evt.clientY/innerHeight)*2+1);
+}
+let dragMode=null, dragTrackIdx=-1, lastMouse={x:0,y:0};
+const keys = new Set();
+addEventListener('keydown', e=>keys.add(e.key.toLowerCase()));
+addEventListener('keyup', e=>keys.delete(e.key.toLowerCase()));
+function updateCameraKeys(dt){
+  const rotSpeed=1.3, panSpeed=230;
+  if (keys.has('arrowleft')) camSpherical.theta -= rotSpeed*dt;
+  if (keys.has('arrowright')) camSpherical.theta += rotSpeed*dt;
+  if (keys.has('arrowup')) camSpherical.phi = THREE.MathUtils.clamp(camSpherical.phi-rotSpeed*dt,0.25,1.45);
+  if (keys.has('arrowdown')) camSpherical.phi = THREE.MathUtils.clamp(camSpherical.phi+rotSpeed*dt,0.25,1.45);
+  const offset = new THREE.Vector3().setFromSpherical(camSpherical);
+  const forward = new THREE.Vector3(-offset.x,0,-offset.z).normalize();
+  const right = new THREE.Vector3(forward.z,0,-forward.x);
+  const pan = new THREE.Vector3();
+  if (keys.has('w')) pan.addScaledVector(forward, panSpeed*dt);
+  if (keys.has('s')) pan.addScaledVector(forward, -panSpeed*dt);
+  if (keys.has('d')) pan.addScaledVector(right, panSpeed*dt);
+  if (keys.has('a')) pan.addScaledVector(right, -panSpeed*dt);
+  if (pan.lengthSq() > 0){
+    camTarget.add(pan);
+    camTarget.x = THREE.MathUtils.clamp(camTarget.x,-480,480);
+    camTarget.z = THREE.MathUtils.clamp(camTarget.z,-480,480);
+  }
+  applyCam();
+}
+
+function segPoint(t){
+  const segs = track.length-1;
+  const s = Math.min(Math.floor(t*segs), segs-1);
+  const local = t*segs - s;
+  const a = track[s], b = track[s+1];
+  return { x: a.x+(b.x-a.x)*local, z: a.z+(b.z-a.z)*local };
+}
+function updateStats(overLand, surgeFt){
+  const cat = windMph<95?1:windMph<111?2:windMph<130?3:windMph<157?4:5;
+  document.getElementById('cat').textContent = cat;
+  document.getElementById('wind').textContent = Math.round(windMph);
+  document.getElementById('status').textContent = overLand ? 'Landfall — weakening' : 'Over water';
+  document.getElementById('surge').textContent = surgeFt.toFixed(1);
+  peakSurge = Math.max(peakSurge, surgeFt);
+  document.getElementById('peakSurge').textContent = peakSurge.toFixed(1);
+  document.getElementById('flooded').textContent = Math.round(100*fractionAbove(floodDmg,0.15)) + '%';
+  document.getElementById('winddmgStat').textContent = Math.round(100*fractionAbove(hurrWindDmg,0.15)) + '%';
+}
+function setHint(text){
+  const h = document.getElementById('hint');
+  h.textContent = text; h.style.display = text ? 'block' : 'none';
+}
+function setScenarioHint(text){
+  const el = document.getElementById('scenarioHint');
+  if (text){ el.textContent = text; el.style.display = 'block'; }
+  else el.style.display = 'none';
+}
+
+function applyScenario(key){
+  const sc = SCENARIOS[key] || SCENARIOS.free;
+  logEvent('scenario', {key});
+  if (sc.coast && sc.coast !== currentCoastKey){
+    document.getElementById('coastlineSelect').value = sc.coast;
+    loadDEM(sc.coast).then(()=>{
+      if (sc.track){ track = sc.track.map(p=>({x:p.x,z:p.z})); drawTrack(); }
+      if (sc.rain){ rainCenter.x=sc.rain.x; rainCenter.z=sc.rain.z; rainMarker.position.set(sc.rain.x,2,sc.rain.z); }
+      manualBoost = sc.intensity || 0;
+      document.getElementById('intensitySlider').value = manualBoost;
+      document.getElementById('intensityOut').textContent = manualBoost;
+      progress = 0; peakSurge = 0;
+      setScenarioHint(sc.hint);
+    });
+  } else {
+    if (sc.track){ track = sc.track.map(p=>({x:p.x,z:p.z})); drawTrack(); }
+    if (sc.rain){ rainCenter.x=sc.rain.x; rainCenter.z=sc.rain.z; rainMarker.position.set(sc.rain.x,2,sc.rain.z); }
+    manualBoost = sc.intensity || 0;
+    document.getElementById('intensitySlider').value = manualBoost;
+    document.getElementById('intensityOut').textContent = manualBoost;
+    progress = 0; peakSurge = 0;
+    resetTerrainDamage(); resetCity();
+    setScenarioHint(sc.hint);
+  }
+}
+
+function initSceneObjects(){
+  stormGroup = new THREE.Group(); scene.add(stormGroup);
+  bands = [];
+  const bandColors = [0xdfe9ef, 0xbfd2df, 0x9fb9cc];
+  for (let i=0;i<6;i++){
+    const curve = new THREE.EllipseCurve(0,0, 30+i*9, 22+i*7, 0, Math.PI*1.5, false, 0);
+    const pts = curve.getPoints(40).map(p=>new THREE.Vector3(p.x,0,p.y));
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({color:bandColors[i%3], transparent:true, opacity:0.75-i*0.08});
+    const line = new THREE.Line(geo, mat);
+    line.rotation.y = i*0.6;
+    stormGroup.add(line);
+    bands.push(line);
+  }
+  eye = new THREE.Mesh(new THREE.CircleGeometry(6,24), new THREE.MeshBasicMaterial({color:0xffffff}));
+  eye.rotation.x = -Math.PI/2; eye.position.y = 1;
+  stormGroup.add(eye);
+  stormGroup.position.set(300, Math.max(4, elevAt(300,200) + 8), 200);
+
+  track = [ {x:300,z:200}, {x:150,z:100}, {x:0,z:20}, {x:-150,z:-60} ];
+  trackMat = new THREE.LineBasicMaterial({color:0xffcf6b});
+  drawTrack();
+
+  rainMarker = new THREE.Mesh(new THREE.RingGeometry(60,66,24), new THREE.MeshBasicMaterial({color:0x6fa8dc, transparent:true, opacity:0.35, side:THREE.DoubleSide}));
+  rainMarker.rotation.x = -Math.PI/2;
+  rainMarker.position.set(rainCenter.x,2,rainCenter.z);
+  scene.add(rainMarker);
+
+  rainDrops = [];
+  const rainGroup = new THREE.Group(); scene.add(rainGroup);
+  for (let i=0;i<50;i++){
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1.8,6,6), new THREE.MeshBasicMaterial({color:0x6fa8dc}));
+    m.position.set(rainCenter.x+(Math.random()-0.5)*140, 20+Math.random()*60, rainCenter.z+(Math.random()-0.5)*140);
+    rainGroup.add(m);
+    rainDrops.push({mesh:m, speed:55+Math.random()*45, top:m.position.y});
+  }
+
+  document.getElementById('placeHazard').onclick = (e)=>{
+    const h = document.getElementById('hazardSelect').value;
+    placeMode = h;
+    e.target.classList.add('armed');
+    const hints = {
+      lightning: 'Click the map to strike lightning.',
+      tornado: 'Click the map to place a tornado.',
+      wildfire: 'Click the map to ignite a wildfire patch.',
+      extreme_rain: 'Click the map to drop an extreme rain burst (boosts local precip & fluvial).',
+      fluvial: 'Click near a low area to seed fluvial flooding (interacts with hurricane rain).'
+    };
+    setHint(hints[h] || 'Click the map to place the hazard.');
+  };
+  document.getElementById('overlaySelect').onchange = (e)=> setOverlay(e.target.value);
+  document.getElementById('coastlineSelect').onchange = (e)=>{
+    document.getElementById('coastlineSelect').disabled = true;
+    loadDEM(e.target.value).finally(()=>{ document.getElementById('coastlineSelect').disabled = false; });
+    logEvent('coastline_change', {coast:e.target.value});
+  };
+  document.getElementById('scenarioSelect').onchange = (e)=> applyScenario(e.target.value);
+  document.getElementById('intensitySlider').oninput = (e)=>{
+    manualBoost = Number(e.target.value);
+    document.getElementById('intensityOut').textContent = manualBoost;
+    logEvent('intensity', {value:manualBoost});
+  };
+  document.getElementById('exportLog').onclick = exportLog;
+  document.getElementById('helpBtn').onclick = ()=>{ document.getElementById('onboard').style.display='flex'; };
+  document.getElementById('startBtn').onclick = ()=>{ document.getElementById('onboard').style.display='none'; logEvent('start'); };
+  document.getElementById('reset').onclick = ()=>{
+    track = [ {x:300,z:200}, {x:150,z:100}, {x:0,z:20}, {x:-150,z:-60} ];
+    drawTrack();
+    progress = 0; windMph = 75; peakSurge = 0; manualBoost = 0;
+    document.getElementById('intensitySlider').value = 0;
+    document.getElementById('intensityOut').textContent = 0;
+    lightningCount = 0;
+    document.getElementById('lightningStat').textContent = 0;
+    lightningBolts.forEach(b=>scene.remove(b.line));
+    lightningBolts = [];
+    resetTerrainDamage();
+    resetCity();
+    if (tornado){ scene.remove(tornado.group); tornado=null; }
+    document.getElementById('tornadoStat').textContent = 'None';
+    placeMode = null; setHint(''); setScenarioHint('');
+    document.getElementById('placeHazard').classList.remove('armed');
+    document.getElementById('scenarioSelect').value = 'free';
+    logEvent('reset');
+  };
+
+  // Unified pointer handling (mouse + touch)
+  function pointerDown(clientX, clientY){
+    lastMouse = {x:clientX, y:clientY};
+    const p = toWorldFromNDC((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1);
+    if (placeMode && p){
+      if (placeMode === 'tornado') placeTornadoAt(p.x,p.z);
+      else if (placeMode === 'lightning') strikeLightning(p.x,p.z);
+      else if (placeMode === 'wildfire') {
+        damageAndRefresh(p.x, p.z, 28, windDmg, 1.2, 1); // scorch as fire proxy
+        logEvent('wildfire', {x:Math.round(p.x), z:Math.round(p.z)});
+      }
+      else if (placeMode === 'extreme_rain') {
+        // boost precip and local flood (fluvial interaction)
+        for (let i=0;i<precipAccum.length;i++){ /* light global */ }
+        damageAndRefresh(p.x, p.z, 50, floodDmg, 0.8, 1);
+        // also push rainCenter briefly
+        rainCenter.x = p.x; rainCenter.z = p.z;
+        rainMarker.position.set(p.x,2,p.z);
+        logEvent('extreme_rain', {x:Math.round(p.x), z:Math.round(p.z)});
+      }
+      else if (placeMode === 'fluvial') {
+        // seed fluvial flood that can be amplified by hurricane precip
+        damageAndRefresh(p.x, p.z, 40, floodDmg, 0.7, 1);
+        logEvent('fluvial_seed', {x:Math.round(p.x), z:Math.round(p.z)});
+      }
+      placeMode = null; setHint('');
+      document.getElementById('placeHazard').classList.remove('armed');
+      return;
+    }
+    if (p){
+      let best=1e9, bi=-1;
+      track.forEach((t,i)=>{ const d=(t.x-p.x)**2+(t.z-p.z)**2; if(d<best){best=d;bi=i;} });
+      if (best < 3000){ dragMode='track'; dragTrackIdx=bi; logEvent('track_drag_start', {idx:bi}); return; }
+      if (tornado){
+        const d = (tornado.x-p.x)**2 + (tornado.z-p.z)**2;
+        if (d < 3000){ dragMode='tornado'; return; }
+      }
+      const dR = (rainCenter.x-p.x)**2 + (rainCenter.z-p.z)**2;
+      if (dR < 5500){ dragMode='rain'; return; }
+    }
+    dragMode='camera';
+  }
+  function pointerMove(clientX, clientY){
+    if (dragMode==='track'){
+      const p = toWorldFromNDC((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1);
+      if(!p) return;
+      track[dragTrackIdx] = {x:p.x, z:p.z}; drawTrack();
+    } else if (dragMode==='tornado'){
+      const p = toWorldFromNDC((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1);
+      if(!p || !tornado) return;
+      tornado.x = p.x; tornado.z = p.z; tornado.manual = true;
+    } else if (dragMode==='rain'){
+      const p = toWorldFromNDC((clientX/innerWidth)*2-1, -(clientY/innerHeight)*2+1);
+      if(!p) return;
+      rainCenter.x = p.x; rainCenter.z = p.z;
+      rainMarker.position.set(p.x,2,p.z);
+    } else if (dragMode==='camera'){
+      const dx = clientX-lastMouse.x, dy = clientY-lastMouse.y;
+      camSpherical.theta -= dx*0.006;
+      camSpherical.phi = THREE.MathUtils.clamp(camSpherical.phi - dy*0.006, 0.25, 1.45);
+      lastMouse = {x:clientX, y:clientY};
+      applyCam();
+    }
+  }
+  function pointerUp(){ dragMode=null; }
+
+  renderer.domElement.addEventListener('mousedown', e=> pointerDown(e.clientX, e.clientY));
+  renderer.domElement.addEventListener('mousemove', e=> pointerMove(e.clientX, e.clientY));
+  addEventListener('mouseup', pointerUp);
+
+  renderer.domElement.addEventListener('touchstart', e=>{
+    if (e.touches.length===1){ e.preventDefault(); pointerDown(e.touches[0].clientX, e.touches[0].clientY); }
+  }, {passive:false});
+  renderer.domElement.addEventListener('touchmove', e=>{
+    if (e.touches.length===1){ e.preventDefault(); pointerMove(e.touches[0].clientX, e.touches[0].clientY); }
+  }, {passive:false});
+  renderer.domElement.addEventListener('touchend', pointerUp);
+
+  renderer.domElement.addEventListener('wheel', e=>{
+    e.preventDefault();
+    camSpherical.radius = THREE.MathUtils.clamp(camSpherical.radius + e.deltaY*0.4, 120, 900);
+    applyCam();
+  }, {passive:false});
+}
+
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  updateCameraKeys(dt);
+
+  progress = (progress + 0.0009) % 1;
+  const p = segPoint(progress);
+  const terrainH = elevAt(p.x, p.z);
+  stormGroup.position.set(p.x, Math.max(4, terrainH + 8), p.z); // stay above terrain
+  const sst = 1 - THREE.MathUtils.clamp((p.z+500)/1000,0,1);
+  const overLand = isOverLand(p.x,p.z);
+  const target = overLand ? Math.max(40, windMph*0.965) : THREE.MathUtils.clamp(70+sst*90+manualBoost, 60, 200);
+  windMph += (target-windMph)*0.03;
+  stormGroup.scale.setScalar(THREE.MathUtils.clamp(windMph/95, 0.6, 1.8));
+  bands.forEach((b,i)=> b.rotation.y += (0.01+i*0.004)*(windMph/90));
+
+  const surgeReach = 40 + windMph*0.55;
+  if (windMph > 55) damageAndRefresh(p.x, p.z, surgeReach, floodDmg, windMph/500, dt, true); // quadrant bias
+  const windDmgReach = 26 + windMph*0.34;
+  if (windMph > 74) damageAndRefresh(p.x, p.z, windDmgReach, hurrWindDmg, (windMph-74)/650, dt, true); // quadrant bias
+  const surgeFt = THREE.MathUtils.clamp((windMph-50)/7, 0, 24);
+  updateStats(overLand, surgeFt);
+  updatePrecip(dt);
+  updateOverlayMesh();
+
+  rainDrops.forEach(r=>{
+    r.mesh.position.y -= r.speed*dt;
+    if (r.mesh.position.y < 2){
+      r.mesh.position.y = r.top;
+      r.mesh.position.x = rainCenter.x + (Math.random()-0.5)*140;
+      r.mesh.position.z = rainCenter.z + (Math.random()-0.5)*140;
+    }
+  });
+
+  if (tornado){
+    tornado.age += dt;
+    if (!tornado.manual){
+      tornado.x += (Math.random()-0.5)*90*dt;
+      tornado.z += (Math.random()-0.5)*90*dt;
+    }
+    tornado.x = THREE.MathUtils.clamp(tornado.x,-495,30);
+    tornado.z = THREE.MathUtils.clamp(tornado.z,-495,295);
+    tornado.group.position.set(tornado.x,0,tornado.z);
+    tornado.group.rotation.y += dt*12;
+    damageAndRefresh(tornado.x, tornado.z, 22, windDmg, 0.9, dt);
+    document.getElementById('tornadoStat').textContent = 'EF'+efScale(tornado.mph)+' active';
+    if (tornado.age > 60){
+      scene.remove(tornado.group);
+      tornado = null;
+      document.getElementById('tornadoStat').textContent = 'Dissipated';
+      logEvent('tornado_dissipate');
+    }
+  }
+
+  updateLightning(dt);
+  updateCityDamage();
+
+  renderer.render(scene, camera);
+}
+
+loadDEM(currentCoastKey);
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
